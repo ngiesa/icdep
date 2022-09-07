@@ -82,7 +82,8 @@ class Preprocessor:
         conv = MetaManager.get_lab_conversions()
         name_split = [n.strip().lower() for n in name.split(" ")]
         conv = conv[conv["Original_Unit"].isin(unit_list)]
-        conv = conv[(conv.parameter.isin(name_split)) & (conv.carrier.isin(name_split))]
+        conv = conv[(conv.parameter.isin(name_split))
+                    & (conv.carrier.isin(name_split))]
         if len(conv) < 1:
             # nothing to convert
             return df
@@ -98,7 +99,8 @@ class Preprocessor:
     # conversion for input values
     def convert_input_units(self, df: DataFrame = None, unit_list: list = []):
         conv = MetaManager.get_med_conversions()
-        conv["Original_Unit"] = [u.lower().strip() for u in conv["Original_Unit"]]
+        conv["Original_Unit"] = [u.lower().strip()
+                                 for u in conv["Original_Unit"]]
         conv = conv[conv["Original_Unit"].isin(unit_list)]
         if len(conv) < 1:
             # nothing to convert
@@ -170,7 +172,8 @@ class Preprocessor:
 
             # assign zero for number of diagnosis
             if domain == "comorbidities_and_diagnosis":
-                df = self.dm.assign_zero_cases(df, time_relevant=jsc.is_time_relevant())
+                df = self.dm.assign_zero_cases(
+                    df, time_relevant=jsc.is_time_relevant())
 
             # check if bounds are defined in meta data and cut off value
             if (md["UpperBound"].iloc[0] != "") & (md["LowerBound"].iloc[0] != ""):
@@ -203,7 +206,7 @@ class Preprocessor:
                 )
                 df = df.assign(c_start_ts=[""] * len(df))
                 df = df.assign(c_end_ts=[""] * len(df))
-                
+
             return jsc, df
 
         elif jsc.is_duration():
@@ -244,7 +247,8 @@ class Preprocessor:
                     ]
                 )
             # assign zero cases
-            df = self.dm.assign_zero_cases(df, time_relevant=jsc.is_time_relevant())
+            df = self.dm.assign_zero_cases(
+                df, time_relevant=jsc.is_time_relevant())
             # merge with master
             df = self.dm.merge_with_master_df(df=df)
             return jsc, df
@@ -266,7 +270,7 @@ class Preprocessor:
 
         if tl != 0:
             df = self.tm.get_time_lines(
-                df, tl=tl, is_duration=jsc.is_duration(), name=name
+                df, tl=tl, is_duration=jsc.is_duration(), feature_name=name
             )
 
         # return none if nothing to process
@@ -302,7 +306,8 @@ class Preprocessor:
             df = df.assign(c_end_ts=[""] * len(df))
 
         # get the train test sets
-        sets = self.tts.get_train_test_df(df, jsc.is_binary())
+        dm = DataManager()
+        sets = dm.get_train_test_df(df, jsc.is_binary())
 
         df = df[
             [
@@ -404,7 +409,8 @@ class Preprocessor:
 
             # create storage string
             store_string = "./data/prepared/{domain}/tl{tl}/{name}_{set}{unit}".format(
-                domain=jsc.data_obj["c_domain"].strip().replace(" ", "_").lower(),
+                domain=jsc.data_obj["c_domain"].strip().replace(
+                    " ", "_").lower(),
                 tl=str(tl),
                 name=jsc.data_obj["c_name"].strip().replace(" ", "_").lower(),
                 set=t_set,
@@ -419,13 +425,7 @@ class Preprocessor:
 
         for i, file in enumerate(MetaManager.ehr_raw_files):
 
-            if "nudesc_backup" in file:
-                continue
-
-            if not "nudesc" in file:
-                continue
-
-            if "camicu" in file:
+            if ("nudesc_backup" in file) | ("camicu" in file) | ("nudesc" in file):
                 continue
 
             # open and preprocess information
@@ -450,22 +450,23 @@ class Preprocessor:
                             tl=tl, jsc=jsc, df=df, unit=unit
                         )
                 else:
-                    self.get_time_set_prepared_features(jsc=jsc, df=df, unit=unit)
+                    self.get_time_set_prepared_features(
+                        jsc=jsc, df=df, unit=unit)
 
             jsc = None
             df = None
             gc.collect()
 
-            self.missing_df.to_csv(
-                "./data/metrics/descriptive/missing_features_{}.csv".format(
-                    store_datetime
-                )
+        self.missing_df.to_csv(
+            "./data/metrics/descriptive/missing_features_{}.csv".format(
+                store_datetime
             )
-            self.available_df.to_csv(
-                "./data/metrics/descriptive/available_features_{}.csv".format(
-                    store_datetime
-                )
+        )
+        self.available_df.to_csv(
+            "./data/metrics/descriptive/available_features_{}.csv".format(
+                store_datetime
             )
+        )
 
     def normalize_odds_ratio(self):
 
@@ -477,7 +478,6 @@ class Preprocessor:
             self.available_df["odds_ratio_train"] / 2
         )
         self.available_df["odds_ratio_test"] = self.available_df["odds_ratio_test"] / 2
-        d = self.available_df
         self.available_df = self.min_max_scaling(
             df=self.available_df, colname="odds_ratio_train"
         )

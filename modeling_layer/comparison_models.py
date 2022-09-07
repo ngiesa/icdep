@@ -4,14 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import gc
 from extraction_layer.support_classes.js_converter import JSConverter
+from modeling_layer.metrics import get_metrics
 from preprocessing_layer.data_manager import DataManager
 from preprocessing_layer.data_manager import DataManager
-from preprocessing_layer.time_manager import TimeManager
-from preprocessing_layer.preprocessor import Preprocessor
-from pandas.core.frame import DataFrame
 from plotting_layer.auc_plotter import AUCPlotter
 from sklearn.linear_model import LogisticRegression
-from modeling_layer.train_functions import load_train_test_dl, train_model
+from modeling_layer.train_functions import load_train_test_dl, train_mlp_model
 from modeling_layer.models.multilayer_perceptron import MLP
 from modeling_layer.model_trainer import ModelTrainer
 from modeling_layer.models.prediction_boogaard import BoogaardPredictor
@@ -25,7 +23,7 @@ class ComparisonModels:
         self.mt = ModelTrainer()
         self.ax_roc = []
         self.f_roc = []
-        self.bootstrap_rounds = 100
+        self.boot_strap_iterations = 1000
 
     def retrain_lr_and_mlp(
         self,
@@ -44,7 +42,8 @@ class ComparisonModels:
     ):
         metrics_dict_all = []
         auc_plot = AUCPlotter()
-        X_train, metr_dict = self.dm.standardize_data(df=X_train, num_cols=num_cols)
+        X_train, metr_dict = self.dm.standardize_data(
+            df=X_train, num_cols=num_cols)
         X_test, _ = self.dm.standardize_data(
             df=X_test, num_cols=num_cols, metr_dict=metr_dict
         )
@@ -59,7 +58,8 @@ class ComparisonModels:
         # apply on train data
         prob = clf.predict_proba(np.nan_to_num(X_train))
         prob = [x[1] for x in prob]
-        metrics_dict_train = self.mt.get_metrics(targets=y_train, pred=prob, thres=0.5,)
+        metrics_dict_train = get_metrics(
+            targets=y_train, pred=prob, )
         metrics_dict_train["model"] = author + "_lr"
         metrics_dict_train["type"] = "train"
         metrics_dict_train["nr"] = model_nr
@@ -67,7 +67,8 @@ class ComparisonModels:
         # apply on test data
         prob = clf.predict_proba(np.nan_to_num(X_test))
         prob = [x[1] for x in prob]
-        metrics_dict_test = self.mt.get_metrics(targets=y_test, pred=prob, thres=0.5,)
+        metrics_dict_test = get_metrics(
+            targets=y_test, pred=prob, )
         metrics_dict_test["model"] = author + "_lr"
         metrics_dict_test["type"] = "test"
         metrics_dict_test["nr"] = model_nr
@@ -76,7 +77,7 @@ class ComparisonModels:
             X_test,
             y_test,
             clf,
-            self.bootstrap_rounds,
+            self.boot_strap_iterations,
             df_val_res,
             author,
             model_nr,
@@ -137,7 +138,7 @@ class ComparisonModels:
         model = MLP(n_inputs=X_train.shape[1], n_nodes=nodes)
         # retrain model and calculate metrics with selected hyperparameters
         gc.collect()
-        training_loss, validation_loss, model = train_model(
+        training_loss, validation_loss, model = train_mlp_model(
             train_df, test_df, model, 1e-3, pos_weight, "bce", 5, 50
         )
         targets = train_df.dataset.tensors[1]
@@ -148,7 +149,8 @@ class ComparisonModels:
         ).dropna()
         targets = df_target["targets"]
         pred = df_target["pred"]
-        metrics_dict_train = self.mt.get_metrics(targets=targets, pred=pred, thres=0.5,)
+        metrics_dict_train = get_metrics(
+            targets=targets, pred=pred, )
         model_name = author + "_mlp"
         metrics_dict_train["model"] = model_name
         metrics_dict_train["type"] = "train"
@@ -163,7 +165,7 @@ class ComparisonModels:
             inputs,
             targets,
             model,
-            self.bootstrap_rounds,
+            self.boot_strap_iterations,
             df_val_res,
             author,
             model_nr,
@@ -176,7 +178,8 @@ class ComparisonModels:
         ).dropna()
         targets = df_target["targets"]
         pred = df_target["pred"]
-        metrics_dict_test = self.mt.get_metrics(targets=targets, pred=pred, thres=0.5)
+        metrics_dict_test = get_metrics(
+            targets=targets, pred=pred)
         metrics_dict_test["model"] = model_name
         metrics_dict_test["type"] = "test"
         metrics_dict_test["nr"] = model_nr
@@ -186,7 +189,8 @@ class ComparisonModels:
                 pd.DataFrame(d, index=[0]), ignore_index=True
             )
 
-        df_val_res.to_csv("./data/metrics/performance/final_test_set/eval_models.csv")
+        df_val_res.to_csv(
+            "./data/metrics/performance/final_test_set/eval_models.csv")
 
         auc_plot.plot_roc_auc(
             targets=targets,
@@ -263,7 +267,8 @@ class ComparisonModels:
         # sample data in 8h blocks according to authors description
         df = self.dm.sample_mean_per_time_unit(df=df, time_unit="8H")
         # create variable c_value where 1 stands for 8h below -4 and 0 for above
-        df = df.assign(c_value=[1 if x <= -4 else 0 for x in list(df["c_value"])])
+        df = df.assign(
+            c_value=[1 if x <= -4 else 0 for x in list(df["c_value"])])
         # assigning rass
         data_holder["rass_8h"] = self.dm.get_first_value(
             df[["c_case_id", "c_start_ts", "c_value"]]
@@ -286,12 +291,14 @@ class ComparisonModels:
         # reassigning values to rass for coma definition
         df_rass = data_holder["rass_8h"]
         df_rass = df_rass.assign(
-            c_value=[2 if x == 1 else 0 for x in list(data_holder["rass_8h"].c_value)]
+            c_value=[2 if x == 1 else 0 for x in list(
+                data_holder["rass_8h"].c_value)]
         )
         df_rass = df_rass[["c_value", "c_case_id", "c_op_id"]]
         # appending and selecting the maximum category
         df = df_rass.append(df).drop_duplicates()
-        df = df.groupby(["c_op_id", "c_case_id"])["c_value"].max().reset_index()
+        df = df.groupby(["c_op_id", "c_case_id"])[
+            "c_value"].max().reset_index()
         # reassigning data
         data_holder["coma"] = df
         # combining features to define infection like defined by the authors with antibiotics intake
@@ -308,7 +315,8 @@ class ComparisonModels:
         # calc sum of bowth binary variables
         df = df.assign(c_value_sum=df.c_value_ant + df.c_value_dia)
         # create variable with 1, 0 in case at least one is positive
-        df = df.assign(c_value=[1 if x > 0 else 0 for x in list(df["c_value_sum"])])
+        df = df.assign(
+            c_value=[1 if x > 0 else 0 for x in list(df["c_value_sum"])])
         # assigning to infection in data holder
         data_holder["infection"] = df[
             ["c_case_id", "c_op_id", "c_value"]
@@ -318,7 +326,8 @@ class ComparisonModels:
         # sample data in 8h blocks according to authors description
         df = self.dm.sample_mean_per_time_unit(df=df, time_unit="8H")
         # create variable c_value with 1 for <7.35 and 0 for a level above
-        df = df.assign(c_value=[1 if x < 7.35 else 0 for x in list(df["c_value"])])
+        df = df.assign(
+            c_value=[1 if x < 7.35 else 0 for x in list(df["c_value"])])
         # reassigning to data holder
         data_holder["ph_in_blood_8h"] = df
         # sample bicarbonate values as well so that they can be compared
@@ -328,7 +337,8 @@ class ComparisonModels:
         # sample data in 8h blocks according to authors description
         df = self.dm.sample_mean_per_time_unit(df=df, time_unit="8H")
         # create variable c_value with 1 for <24 mmol/l and 0 for a level above
-        df = df.assign(c_value=[1 if x < 24 else 0 for x in list(df["c_value"])])
+        df = df.assign(
+            c_value=[1 if x < 24 else 0 for x in list(df["c_value"])])
         # reassigning to data holder
         data_holder["bicarbonat_in_blood_8h"] = df
         # combining and annotating data ph and bicarbonate
@@ -339,7 +349,8 @@ class ComparisonModels:
             suffixes=["_bic", "_ph"],
         )
         df = df.assign(c_value_sum=df.c_value_bic + df.c_value_ph)
-        df = df.assign(c_value=[1 if x == 2 else 0 for x in list(df.c_value_sum)])
+        df = df.assign(
+            c_value=[1 if x == 2 else 0 for x in list(df.c_value_sum)])
         # reassigning data
         data_holder["metabolic_acidosis"] = (
             df[["c_case_id", "c_op_id", "c_value"]].drop_duplicates().fillna(0)
@@ -427,6 +438,7 @@ class ComparisonModels:
         ):
             df_merge[col] = df_merge[col].fillna((df_merge[col].median()))
         # opening test and train sets
+        df_merge = df_merge.fillna(0)
         jsc = JSConverter()
         js = jsc.read_js_file("./data/meta/cohort/train_test_split")
         df_merge_test = df_merge[
@@ -459,8 +471,8 @@ class ComparisonModels:
         pred = X_test.apply(
             lambda x: pred_boogaard_recalibrated.predict_outcome(x), axis=1
         )
-        metrics_dict_test = self.mt.get_metrics(
-            targets=list(df_merge_test.c_target), pred=list(pred), thres=0.5,
+        metrics_dict_test = get_metrics(
+            targets=list(df_merge_test.c_target), pred=list(pred)
         )
         metrics_dict_test["model"] = "boogard_rec"
         metrics_dict_test["type"] = "test"
@@ -471,7 +483,7 @@ class ComparisonModels:
             X_test,
             list(df_merge_test.c_target),
             pred_boogaard_recalibrated,
-            self.bootstrap_rounds,
+            self.boot_strap_iterations,
             df_val_res,
             "boogard_rec",
             model_nr,
@@ -532,10 +544,10 @@ class ComparisonModels:
         df_merge_test["p_model"] = X_test.apply(
             lambda x: pred_boogaard.predict_outcome(x), axis=1
         )
-        metrics_dict_test = self.mt.get_metrics(
+        metrics_dict_test = get_metrics(
             targets=list(df_merge_test.c_target),
             pred=list(df_merge_test.p_model),
-            thres=0.5,
+
         )
         metrics_dict_test["model"] = "boogard"
         metrics_dict_test["type"] = "test"
@@ -545,7 +557,7 @@ class ComparisonModels:
             X_test,
             list(df_merge_test.c_target),
             pred_boogaard_recalibrated,
-            self.bootstrap_rounds,
+            self.boot_strap_iterations,
             df_val_res,
             "boogard",
             model_nr,
@@ -642,7 +654,8 @@ class ComparisonModels:
         metrics_dict_all = []
         data_holder = self.dm.load_features(features_wassenaar, model_nr)
         # get first entry measured before pod
-        data_holder["nibp_mean"] = self.dm.get_first_value(data_holder["nibp_mean"])
+        data_holder["nibp_mean"] = self.dm.get_first_value(
+            data_holder["nibp_mean"])
         # convert blood urea nitrogen from mg/dl to mmol/l
         df_bun = data_holder["urea_nitrogen_in_blood"]
         df_bun = df_bun.assign(
@@ -682,7 +695,8 @@ class ComparisonModels:
                 suffixes=["", "_cog"],
             )
             .merge(
-                data_holder["drug_class_corticosteroids"][["c_case_id", "c_value"]],
+                data_holder["drug_class_corticosteroids"][[
+                    "c_case_id", "c_value"]],
                 on="c_case_id",
                 how="left",
                 suffixes=["", "_cort"],
@@ -739,8 +753,8 @@ class ComparisonModels:
         X_test = df_merge_test[cols]
         predictor = WassenaarPredictor()
         pred = X_test.apply(lambda x: predictor.predict_outcome(x), axis=1)
-        metrics_dict_test = self.mt.get_metrics(
-            targets=list(df_merge_test.c_target), pred=list(pred), thres=0.5
+        metrics_dict_test = get_metrics(
+            targets=list(df_merge_test.c_target), pred=list(pred),
         )
         metrics_dict_test["model"] = "wassenaar"
         metrics_dict_test["type"] = "test"
@@ -750,7 +764,7 @@ class ComparisonModels:
             X_test,
             df_merge_test.c_target,
             predictor,
-            self.bootstrap_rounds,
+            self.boot_strap_iterations,
             df_val_res,
             "wassenaar",
             model_nr,
@@ -840,4 +854,3 @@ class ComparisonModels:
         f_pr.savefig(
             "./plots/interpreted/best_models/eval_graphs/comp_auprc_summary.png"
         )
-

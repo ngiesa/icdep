@@ -15,7 +15,6 @@ from extraction_layer.support_classes.meta_manager import MetaManager
 
 class FeatureSelector:
     def __init__(self) -> None:
-        self.quantile_steps = np.arange(0.0, 1.0, 0.10)
         self.percentiles = [0.1, 0.5, 0.9]
         self.df_set_list_cat = []
         self.df_set_list_num = []
@@ -28,106 +27,65 @@ class FeatureSelector:
             "c_time_consistent",
         ]
 
-    def get_quantiles(self, df: DataFrame = None, col: str = ""):
-        # calculate quantiles according to specified step range
-        mq = mquantiles(a=df[col], prob=self.quantile_steps)
-        return np.append(mq, [1])
-
     def define_feature_sets(self):
+        '''
+        feature sets are first defined purly on condition that at leat 10% of data is non missing
+                Parameters: 
+                        None
+                Returns:
+                        None
+        '''
         # reading available features
         df = pd.read_csv(
             "./data/metrics/descriptive/{}.csv".format(
-                MetaManager.get_last_available_features()
+                "available_features_16_08_2022_revision"
             ),
             index_col=0,
         )
-        df = df.assign(miss_train_mean=(df.miss_train_pos + df.miss_train_neg) / 2)
+        df = df.assign(miss_train_mean=(
+            df.miss_train_pos + df.miss_train_neg) / 2)
         if "index" in list(df.columns):
             df = df.drop(columns=["index"])
         # if occure drop duplicated rows
         df = df.drop_duplicates()
         # create feature with all features at TL0
-        df[df.tl == 0].to_csv("./data/meta/feature_sets/tl0/feature_set_tl0.csv")
+        df[df.tl == 0].to_csv(
+            "./data/meta/feature_sets/tl0/feature_set_tl0.csv")
         # application to numeric as well as categorical features
         feat_types = ["categorical", "numeric"]
+        i = 3
         for feat_t in feat_types:
-            numeric = False
-            ranges = self.categoric_ranges
-            if feat_t == "numeric":
-                col_q = "miss_train_mean"
-                numeric = True
             for tl in range(1, 4):
-                df_feat = df[((df.tl == tl) | (df.tl == 0)) & (df.numeric == numeric)]
-                # get ranges per numeric, categoric selection
-                if numeric:
-                    ranges = self.numeric_ranges
+                df_feat = df[((df.tl == tl) | (df.tl == 0))
+                             & (df.numeric == (feat_t == "numeric"))]
                 # iteration through quantiles and time lines
-                for i, r in enumerate(ranges):
-                    if numeric:
-                        df_q = df_feat[
-                            (df_feat[col_q] >= r[0]) & (df_feat[col_q] < r[1])
-                        ]
-                    else:
-                        df_q = df_feat
-                    df_q = df_q.assign(size=len(df_q))
-                    df_q = df_q.assign(i=i)
-                    df_q.reset_index().to_csv(
-                        "./data/meta/feature_sets/tl{}/{}_feature_set_i_{}.csv".format(
-                            str(tl), feat_t, str(i)
-                        )
-                    )
-                    if numeric:
-                        self.df_set_list_num.append(df_q)
-                    if not numeric:
-                        self.df_set_list_cat.append(df_q)
-
-    def get_summary_table(self):
-
-        df_sum_list = []
-        df_set_list_type = [self.df_set_list_num, self.df_set_list_cat]
-        for j, df_set in enumerate(df_set_list_type):
-            type = "cat"
-            if j == 0:
-                type = "num"
-            df_summary = pd.DataFrame(
-                {
-                    "domain": [
-                        "demographics",
-                        "hospitalizaiton",
-                        "comorbidities and diagnosis",
-                        "operation procedures",
-                        "anesthesia procedures",
-                        "support procedures",
-                        "vital sign",
-                        "respiratory",
-                        "laboratory",
-                        "eeg imaging",
-                        "scores and scales",
-                        "inputs",
-                        "input classes",
-                        "outputs",
+                if (feat_t == "numeric"):
+                    df_q = df_feat[
+                        (df_feat["miss_train"] <= 0.9)
                     ]
-                }
-            )
-            df_summary["type"] = type
-            df_sum = []
-            for i, df in enumerate(df_set):
-                tl = int(max(list(df["tl"])))
-                feat_i = int(df["i"].iloc[0])
-                key = "tl0{}_i{}".format(str(tl), str(feat_i))
-                d = df.groupby(["domain"])["feature"].count().reset_index(name=key)
-                df_sum.append(sum(list(d[key])))
-                df_summary = df_summary.merge(d, on=["domain"], how="left")
-            df_sum_list.append(df_summary)
-        na_drop_cols = list(df_summary.columns)
-        na_drop_cols.remove("domain")
-        na_drop_cols.remove("type")
-        df_sum_list[0].append(df_sum_list[1]).dropna(
-            subset=na_drop_cols, how="all"
-        ).fillna(0).to_csv("./data/metrics/descriptive/feature_set_counts.csv")
+                else:
+                    df_q = df_feat
+                df_q = df_q.assign(size=len(df_q))
+                df_q = df_q.assign(i=i)
+                df_q.reset_index().to_csv(
+                    "./data/meta/feature_sets/tl{}/{}_feature_set_i_{}_revised.csv".format(
+                        str(tl), feat_t, str(i)
+                    )
+                )
+                if (feat_t == "numeric"):
+                    self.df_set_list_num.append(df_q)
+                if not (feat_t == "numeric"):
+                    self.df_set_list_cat.append(df_q)
 
     def __get_store_strings(self, r=None, tl: int = 0):
-
+        '''
+        helper method to open file for feature
+                Parameters: 
+                        r (Series) row of data for features, tl (int): time window 
+                Returns:
+                        path_string_test (str): path of feature in test set, 
+                        path_string_train (str): path of feature in train set
+        '''
         feature_string = r["feature"].strip().lower().replace(" ", "_")
         domain_string = r["domain"].strip().lower().replace(" ", "_")
         unit_string = r["unit"].replace(" ", "").replace("/", "_per_")
@@ -139,8 +97,10 @@ class FeatureSelector:
             tl = 0
 
         # build file and path strings and concatenate
-        file_string_test = "{}_test{}".format(str(feature_string), str(unit_string))
-        file_string_train = "{}_train{}".format(str(feature_string), str(unit_string))
+        file_string_test = "{}_test{}".format(
+            str(feature_string), str(unit_string))
+        file_string_train = "{}_train{}".format(
+            str(feature_string), str(unit_string))
         path_string_test = "./data/prepared/{}/tl{}/{}".format(
             domain_string, str(tl), file_string_test
         )
@@ -152,14 +112,21 @@ class FeatureSelector:
     def __merge_with_df_X(
         self,
         df_X: DataFrame = None,
-        jsc: JSConverter = None,
         df: DataFrame = None,
-        name: str = "",
+        feature_name: str = "",
         cols: list = ["c_pat_id", "c_case_id", "c_op_id"],
     ):
+        '''
+        method merging feature information to master table 
+                Parameters: 
+                        df_X (df): data for holding features as columns, df (data): actual feature data, 
+                        feature_name (str): name of feature, cols (list): list of merge columns
+                Returns:
+                        data (df): merged data 
+        '''
         # merging condition for feature in X dataset
         return df_X.merge(
-            df.rename(columns={"c_value": name}), on=cols, how="left"
+            df.rename(columns={"c_value": feature_name}), on=cols, how="left"
         ).drop_duplicates()
 
     def __build_categoric_sets(
@@ -172,11 +139,20 @@ class FeatureSelector:
         df_train: DataFrame = None,
         df_test: DataFrame = None,
     ):
-
+        '''
+        building and storing categoric feature sets
+                Parameters: 
+                        train_store_path (str), test_store_path (str), df_cat (data): categoric data, 
+                        origin_len_df_train (int): length of result for basic validation checkup, 
+                        tl (int): time window index, df_train (df), df_test (df)
+                Returns:
+                        None
+        '''
         # iterate through categorical features and appen them to list
         for i, row in enumerate(df_cat.drop_duplicates().iterrows()):
             r = row[1].fillna("")
-            path_string_test, path_string_train = self.__get_store_strings(r=r, tl=tl)
+            path_string_test, path_string_train = self.__get_store_strings(
+                r=r, tl=tl)
             for set_t, path_string in zip(
                 ["test", "train"], [path_string_test, path_string_train]
             ):
@@ -189,7 +165,8 @@ class FeatureSelector:
                 _ = jsc.read_js_file(path_string)
                 print("Read: ", path_string)
                 name = jsc.data_obj["c_name"].strip().lower().replace(" ", "_")
-                df = jsc.to_df(col=["c_case_id", "c_pat_id", "c_op_id", "c_value"])
+                df = jsc.to_df(
+                    col=["c_case_id", "c_pat_id", "c_op_id", "c_value"])
                 df = (
                     df.groupby(["c_case_id", "c_pat_id", "c_op_id"])["c_value"]
                     .max()
@@ -197,11 +174,11 @@ class FeatureSelector:
                 )
                 if set_t == "train":
                     df_train = self.__merge_with_df_X(
-                        df_X=df_train, name=name, df=df, jsc=jsc
+                        df_X=df_train, feature_name=name, df=df, jsc=jsc
                     )
                 if set_t == "test":
                     df_test = self.__merge_with_df_X(
-                        df_X=df_test, name=name, df=df, jsc=jsc
+                        df_X=df_test, feature_name=name, df=df, jsc=jsc
                     )
 
                 # throw exception if df_train is getting bigger
@@ -231,11 +208,20 @@ class FeatureSelector:
         df_train: DataFrame = None,
         df_test: DataFrame = None,
     ):
-
+        '''
+        building and storing nuemric feature sets
+                Parameters: 
+                        train_store_path (str), test_store_path (str), df_cat (data): categoric data, 
+                        origin_len_df_train (int): length of result for basic validation checkup, 
+                        tl (int): time window index, df_train (df), df_test (df)
+                Returns:
+                        None
+        '''
         # iterate through numeric features and append them to list
         for i, row in enumerate(df_num.drop_duplicates().iterrows()):
             r = row[1].fillna("")
-            path_string_test, path_string_train = self.__get_store_strings(r=r, tl=tl)
+            path_string_test, path_string_train = self.__get_store_strings(
+                r=r, tl=tl)
             for set_t, path_string in zip(
                 ["test", "train"], [path_string_test, path_string_train]
             ):
@@ -253,16 +239,17 @@ class FeatureSelector:
                     for perc in self.percentiles:
                         df_perc = jsc.get_percentile(perc)
                         name = "{}_p{}".format(
-                            jsc.data_obj["c_name"].strip().lower().replace(" ", "_"),
+                            jsc.data_obj["c_name"].strip(
+                            ).lower().replace(" ", "_"),
                             str(perc),
                         )
                         if set_t == "train":  # append to train df
                             df_train = self.__merge_with_df_X(
-                                df_X=df_train, name=name, df=df_perc, jsc=jsc
+                                df_X=df_train, feature_name=name, df=df_perc, jsc=jsc
                             )
                         if set_t == "test":  # append to test df
                             df_test = self.__merge_with_df_X(
-                                df_X=df_test, name=name, df=df_perc, jsc=jsc
+                                df_X=df_test, feature_name=name, df=df_perc, jsc=jsc
                             )
                 else:
                     # other features like comorbidities
@@ -272,11 +259,11 @@ class FeatureSelector:
                     ).drop_duplicates()
                     if set_t == "test":
                         df_test = self.__merge_with_df_X(
-                            df_X=df_test, name=name, df=df, jsc=jsc
+                            df_X=df_test, feature_name=name, df=df, jsc=jsc
                         )
                     if set_t == "train":
                         df_train = self.__merge_with_df_X(
-                            df_X=df_train, name=name, df=df, jsc=jsc
+                            df_X=df_train, feature_name=name, df=df, jsc=jsc
                         )
 
                 # add sum of features if feature contains volumes or amounts
@@ -287,11 +274,11 @@ class FeatureSelector:
                     )
                     if set_t == "train":
                         df_train = self.__merge_with_df_X(
-                            df_X=df_train, name=name, df=df_sum, jsc=jsc
+                            df_X=df_train, feature_name=name, df=df_sum, jsc=jsc
                         )
                     if set_t == "test":
                         df_test = self.__merge_with_df_X(
-                            df_X=df_test, name=name, df=df_sum, jsc=jsc
+                            df_X=df_test, feature_name=name, df=df_sum, jsc=jsc
                         )
 
                 # calculate stadard deviation from the median for high frequency variables
@@ -302,15 +289,16 @@ class FeatureSelector:
                     )
                     if set_t == "train":
                         df_train = self.__merge_with_df_X(
-                            df_X=df_train, name=name, df=df_std, jsc=jsc
+                            df_X=df_train, feature_name=name, df=df_std, jsc=jsc
                         )
                     if set_t == "test":
                         df_test = self.__merge_with_df_X(
-                            df_X=df_test, name=name, df=df_std, jsc=jsc
+                            df_X=df_test, feature_name=name, df=df_std, jsc=jsc
                         )
 
                 # print meta information
-                print("Length train df with na total", len(df_train.drop_duplicates()))
+                print("Length train df with na total",
+                      len(df_train.drop_duplicates()))
                 print("Length train df without na total", len(df_train.dropna()))
                 print(
                     "Length train df without na y=1",
@@ -340,12 +328,17 @@ class FeatureSelector:
         gc.collect()
 
     def build_feature_sets(self):
-
-        dm = DataManager()
+        '''
+        method for building feature sets per time windows
+                Parameters: None
+                Returns: None
+        '''
+        master_df = pd.read_csv(
+            "./data/meta/cohort/master_time_table_22_08_22.csv", index_col=0)
         sets_t = JSConverter()
         _ = sets_t.read_js_file("./data/meta/cohort/train_test_split")
         # define one X set per q and tl as well as test and train
-        df_X = dm.master_df[
+        df_X = master_df[
             [
                 "c_case_id",
                 "c_pat_id",
@@ -381,10 +374,10 @@ class FeatureSelector:
             ):
                 # building cat and num feature sets for tl0 and clinical defined features
                 self.__build_categoric_sets(
-                    train_store_path="./data/interpreted/{}/df_train_categoric.csv".format(
+                    train_store_path="./data/interpreted/{}/df_train_categoric_revised.csv".format(
                         path
                     ),
-                    test_store_path="./data/interpreted/{}/df_test_categoric.csv".format(
+                    test_store_path="./data/interpreted/{}/df_test_categoric_revised.csv".format(
                         path
                     ),
                     tl=tl,
@@ -394,10 +387,10 @@ class FeatureSelector:
                     origin_len_df_train=len(df_train),
                 )
                 self.__build_numeric_sets(
-                    train_store_path="./data/interpreted/{}/df_train_numeric.csv".format(
+                    train_store_path="./data/interpreted/{}/df_train_numeric_revised.csv".format(
                         path
                     ),
-                    test_store_path="./data/interpreted/{}/df_test_numeric.csv".format(
+                    test_store_path="./data/interpreted/{}/df_test_numeric_revised.csv".format(
                         path
                     ),
                     tl=tl,
@@ -410,67 +403,72 @@ class FeatureSelector:
         #  iterate through i defined feature sets and build them
         for tl in list(range(1, 4)):
             # iterating through quantiles
-            for i in range(0, len(self.numeric_ranges)):
-                if i < 3:
-                    continue
-                # opening feature set information
-                path_num = "./data/meta/feature_sets/tl{}/numeric_feature_set_i_{}.csv".format(
+            i = 3
+            # opening feature set information
+            path_num = "./data/meta/feature_sets/tl{}/numeric_feature_set_i_{}_revised.csv".format(
+                str(tl), str(i)
+            )
+            path_cat = "./data/meta/feature_sets/tl{}/categorical_feature_set_i_{}_revised.csv".format(
+                str(tl), str(i)
+            )
+            df_num = pd.read_csv(path_num, index_col=0)
+            df_cat = pd.read_csv(path_cat, index_col=0)
+            print("TL: ", tl, "i: ", i)
+            print("Length orig. train set (num/cat): ", len(df_train))
+            print("Length orig. test set (num/cat): ", len(df_test))
+            self.__build_numeric_sets(
+                train_store_path="./data/interpreted/tl{}/i{}/df_train_numeric_revised.csv".format(
                     str(tl), str(i)
-                )
-                path_cat = "./data/meta/feature_sets/tl{}/categorical_feature_set_i_{}.csv".format(
+                ),
+                test_store_path="./data/interpreted/tl{}/i{}/df_test_numeric_revised.csv".format(
                     str(tl), str(i)
-                )
-                df_num = pd.read_csv(path_num, index_col=0)
-                df_cat = pd.read_csv(path_cat, index_col=0)
-
-                print("TL: ", tl, "i: ", i)
-                print("Length orig. train set (num/cat): ", len(df_train))
-                print("Length orig. test set (num/cat): ", len(df_test))
-
-                self.__build_numeric_sets(
-                    train_store_path="./data/interpreted/tl{}/i{}/df_train_numeric.csv".format(
-                        str(tl), str(i)
-                    ),
-                    test_store_path="./data/interpreted/tl{}/i{}/df_test_numeric.csv".format(
-                        str(tl), str(i)
-                    ),
-                    tl=tl,
-                    df_num=df_num,
-                    origin_len_df_train=origin_len_df_train,
-                    df_train=df_train,
-                    df_test=df_test,
-                )
-
-                self.__build_categoric_sets(
-                    train_store_path="./data/interpreted/tl{}/i{}/df_train_categoric.csv".format(
-                        str(tl), str(i)
-                    ),
-                    test_store_path="./data/interpreted/tl{}/i{}/df_test_categoric.csv".format(
-                        str(tl), str(i)
-                    ),
-                    tl=tl,
-                    df_cat=df_cat,
-                    df_test=df_test,
-                    df_train=df_train,
-                    origin_len_df_train=origin_len_df_train,
-                )
+                ),
+                tl=tl,
+                df_num=df_num,
+                origin_len_df_train=origin_len_df_train,
+                df_train=df_train,
+                df_test=df_test,
+            )
+            self.__build_categoric_sets(
+                train_store_path="./data/interpreted/tl{}/i{}/df_train_categoric_revised.csv".format(
+                    str(tl), str(i)
+                ),
+                test_store_path="./data/interpreted/tl{}/i{}/df_test_categoric_revised.csv".format(
+                    str(tl), str(i)
+                ),
+                tl=tl,
+                df_cat=df_cat,
+                df_test=df_test,
+                df_train=df_train,
+                origin_len_df_train=origin_len_df_train,
+            )
 
     # define a feature selection algorithm based on missingness and univariate performance metrics
     def apply_feature_selection_algorithm(
         self,
         tl_list: list = [],
-        missing_fraction: int = 0.1,
+        missing_fraction=0.1,
         numeric_threshold=0.05,
         categoric_threshold=2,
         availability_threshold=0.1,
     ):
+        '''
+        application of feature selection algorithm as described in the methods part
+                Parameters: 
+                        tl_list (list): list of time windows that need to be incorporated, 
+                        missing_fraction (float): tunable treshold for missingness per row (surgery), 
+                        numeric_threshold (float): tunable threshold for numeric effect size,
+                        categoric_threshold (float): tunable threshold for categoric effect size,
+                        availability_threshold (float): threshold for general availability of data (patient)
+                Returns: None
+        '''
         # join all dfs for multiple timeline
         df_num, df_cat = self.get_tl_datasets(tl_list=tl_list)
         univ_num = pd.read_csv(
-            "./data/metrics/statistical/univariate_stats_train_numeric.csv", index_col=0
+            "./data/metrics/statistical/univariate_stats_train_numeric_revised.csv", index_col=0
         )
         univ_cat = pd.read_csv(
-            "./data/metrics/statistical/univariate_stats_train_categoric.csv",
+            "./data/metrics/statistical/univariate_stats_train_categoric_revised.csv",
             index_col=0,
         )
         # reset indexes
@@ -485,7 +483,7 @@ class FeatureSelector:
         univ_num = univ_num[univ_num["avai"] > availability_threshold]
         univ_num = (
             univ_num.groupby(["feature"])["2|AUC-0.5|"].mean().reset_index()
-        )  # changed to max TODO MEAN MAX?
+        )
         feats_num = univ_num[univ_num["2|AUC-0.5|"] > numeric_threshold].sort_values(
             ["2|AUC-0.5|"], ascending=False
         )["feature"]
@@ -539,12 +537,21 @@ class FeatureSelector:
 
     # open numerical and categorical datasets according to timelines
     def get_tl_datasets(self, tl_list: list = [], ds_type: str = "train"):
+        '''
+        method for getting data from the time windows
+                Parameters: 
+                        tl_list (list): list of time window indices, ds_type (str): type of dataset (train or test)
+                Returns:
+                        df_numeric (df): numeric data per time windows,
+                        df_categoric (df): categoric data per time windows
+        '''
         # join all dfs for multiple timeline
         df_list_numeric, df_list_categoric = [], []
         for tl in tl_list:
             # open numeric and categoric data frames
             df_tl_numeric = pd.read_csv(
-                "./data/interpreted/tl{}/i3/df_{}_numeric.csv".format(str(tl), ds_type),
+                "./data/interpreted/tl{}/i3/df_{}_numeric.csv".format(
+                    str(tl), ds_type),
                 index_col=0,
             )
             df_tl_categoric = pd.read_csv(
@@ -555,7 +562,8 @@ class FeatureSelector:
             )
             # rename columns related to the time lines
             df_tl_numeric = self.__assign_tl_colums(df=df_tl_numeric, tl=tl)
-            df_tl_categoric = self.__assign_tl_colums(df=df_tl_categoric, tl=tl)
+            df_tl_categoric = self.__assign_tl_colums(
+                df=df_tl_categoric, tl=tl)
             # append them to df lists
             df_list_numeric.append(df_tl_numeric)
             df_list_categoric.append(df_tl_categoric)
@@ -582,14 +590,19 @@ class FeatureSelector:
         return df_numeric, df_categoric
 
     def __reduce_feature_list(self, feat_list: list = []):
+        '''
+        reducing the feature sets per feature to the most discriminative one
+        '''
         list_reduced_feat = []
         for f in feat_list:
             if not f[:-1] in [x[:-1] for x in list_reduced_feat]:
                 list_reduced_feat.append(f)
         return list_reduced_feat
 
-    # remove columns having just ones or zeros and drop times that do not make sense
     def __remove_meaningless_cols(self, df):
+        '''
+        remove columns having just ones or zeros and drop times that do not make sense
+        '''
         drop_cols = []
         time_inc_cols = [
             "tl1_surgery_time",
@@ -607,8 +620,10 @@ class FeatureSelector:
                 drop_cols.append(col)
         return df.drop(columns=drop_cols, axis=1)
 
-    # rename columns for time relevance in models
     def __assign_tl_colums(self, df: DataFrame = None, tl: int = 0):
+        '''
+       rename columns for time relevance in models
+        '''
         tl0_feats = pd.read_csv(
             "./data/meta/feature_sets/tl0/feature_set_tl0.csv", index_col=0
         )["feature"]

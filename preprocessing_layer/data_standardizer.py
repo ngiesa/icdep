@@ -9,6 +9,14 @@ class DataStandardizer:
     def standardize_data(
         self, df: DataFrame = None, metr_dict: dict = None, num_cols: list = []
     ):
+            
+        '''
+        performing z transformation on data train and test indepentently migitating bias 
+                Parameters: 
+                        df (df): data, metr_dict (dict): standardization metrics, num_cols (list): list of numeric columns
+                Returns:
+                        df (df): standardized data, d (dict): dict with standatdization metrics
+        '''
         # convert categorical variables to {1, -1}
         df_cat = df.drop(columns=num_cols)
         df_cat = (df_cat - 0.5) * 2
