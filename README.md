@@ -20,6 +20,10 @@
 | modelling_layer.comparison_models | class for retraining and evaluating of baseline models|
 
 
+### Files with feature descriptions
+
+Csv files including descriptions regarding availability and predictive power are included in the directory statistic_layer.results.
+
 ### Using stored pretrained models
 
 The pretrained models for predicting POD are stored under modeling_layer.models.saved_models as pickle files. In order to load them into your project, you need to run "pip install pickle" when using Python < 3.9. Otherwise you can just run "import pickle" in your script where you want to use these models. Models are labeled as "sav_model_M{T}" where {T} represents a placeholder for the corresponding perioperative time phases:
