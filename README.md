@@ -1,4 +1,3 @@
-## Predicting postoperative delirium assessed by the Nursing Screening Delirium Scale in the recovery room: A retrospective study using a machine learning approach
 
 ### This GitHub repository includes the following files:
 
